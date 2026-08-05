@@ -1,8 +1,9 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vk-electric
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
   labels:
     app: vk-electric
     app.kubernetes.io/component: sync-engine
@@ -18,8 +19,7 @@ spec:
       labels:
         app: vk-electric
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: woowtechcluster1-aorus-15p-xd
+      {{- include "vibekanban.nodeSelector" . | nindent 6 }}
       initContainers:
         - name: wait-for-remote
           image: busybox:1.36
@@ -35,7 +35,8 @@ spec:
               echo "Remote server is ready (migrations complete, electric_sync role created)!"
       containers:
         - name: electric
-          image: electricsql/electric:1.4.13
+          image: "{{ .Values.electric.image.repository }}:{{ .Values.electric.image.tag }}"
+          imagePullPolicy: {{ .Values.electric.image.pullPolicy }}
           workingDir: /app
           env:
             - name: ELECTRIC_ROLE_PASSWORD
@@ -69,30 +70,8 @@ spec:
             - name: electric-data
               mountPath: /app/persistent
           resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 1Gi
+            {{- toYaml .Values.electric.resources | nindent 12 }}
       volumes:
         - name: electric-data
           persistentVolumeClaim:
             claimName: vk-electric-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: vk-electric-svc
-  namespace: vibe-kanban
-  labels:
-    app: vk-electric
-spec:
-  selector:
-    app: vk-electric
-  ports:
-    - name: http
-      protocol: TCP
-      port: 3000
-      targetPort: 3000
-  type: ClusterIP

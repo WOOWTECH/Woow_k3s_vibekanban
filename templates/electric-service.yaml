@@ -1,0 +1,17 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vk-electric-svc
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app: vk-electric
+spec:
+  selector:
+    app: vk-electric
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.electric.service.port }}
+      targetPort: 3000
+  type: {{ .Values.electric.service.type }}

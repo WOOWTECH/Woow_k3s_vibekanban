@@ -1,19 +1,10 @@
-apiVersion: v1
-kind: Secret
-metadata:
-  name: vk-cf-tunnel-secret
-  namespace: vibe-kanban
-  labels:
-    app.kubernetes.io/part-of: vibe-kanban
-type: Opaque
-stringData:
-  TUNNEL_TOKEN: "eyJhIjoiOWMyN2Y2MjNlZTU5NmUwYjY3YmU1NjI2M2JjYjE5NzQiLCJ0IjoiMjY4MDdiYTUtYTBiZi00MDliLTgwOGEtMmQ2Mzc4ZTUwZDYwIiwicyI6Imk0K0NsTVJDN3R1WGdqb3FxeGFWMlVDazJwdUI5aTB4bmtHUEtPaDNHeHM9In0="
+{{- if .Values.cloudflared.enabled }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vk-cloudflared
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
   labels:
     app: vk-cloudflared
     app.kubernetes.io/component: tunnel
@@ -31,7 +22,8 @@ spec:
     spec:
       containers:
         - name: cloudflared
-          image: cloudflare/cloudflared:latest
+          image: "{{ .Values.cloudflared.image.repository }}:{{ .Values.cloudflared.image.tag }}"
+          imagePullPolicy: {{ .Values.cloudflared.image.pullPolicy }}
           args:
             - tunnel
             - --no-autoupdate
@@ -43,10 +35,6 @@ spec:
                   name: vk-cf-tunnel-secret
                   key: TUNNEL_TOKEN
           resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 200m
-              memory: 128Mi
+            {{- toYaml .Values.cloudflared.resources | nindent 12 }}
       restartPolicy: Always
+{{- end }}

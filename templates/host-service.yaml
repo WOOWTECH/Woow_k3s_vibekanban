@@ -1,0 +1,33 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vk-host-svc
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app: vk-host
+spec:
+  selector:
+    app: vk-host
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.host.service.port }}
+      targetPort: 3000
+    {{- if .Values.host.mcp.enabled }}
+    - name: mcp-admin
+      protocol: TCP
+      port: {{ .Values.host.service.mcpAdminPort }}
+      targetPort: 8080
+    - name: mcp-sse
+      protocol: TCP
+      port: {{ .Values.host.service.mcpSsePort }}
+      targetPort: 8000
+    {{- end }}
+    {{- if .Values.host.openchamber.enabled }}
+    - name: openchamber
+      protocol: TCP
+      port: {{ .Values.host.service.openchamberPort }}
+      targetPort: {{ .Values.host.service.openchamberTargetPort }}
+    {{- end }}
+  type: {{ .Values.host.service.type }}

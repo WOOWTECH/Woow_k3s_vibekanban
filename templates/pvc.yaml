@@ -1,44 +1,45 @@
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: vk-db-pvc
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
   labels:
     app: vk-db
 spec:
-  storageClassName: local-path
+  storageClassName: {{ .Values.postgres.persistence.storageClassName }}
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 10Gi
+      storage: {{ .Values.postgres.persistence.size }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: vk-electric-pvc
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
   labels:
     app: vk-electric
 spec:
-  storageClassName: local-path
+  storageClassName: {{ .Values.electric.persistence.storageClassName }}
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 1Gi
+      storage: {{ .Values.electric.persistence.size }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: vk-host-workspace-pvc
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
   labels:
     app: vk-host
 spec:
-  storageClassName: nfs-data
+  storageClassName: {{ .Values.host.workspace.persistence.storageClassName }}
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 20Gi
+      storage: {{ .Values.host.workspace.persistence.size }}

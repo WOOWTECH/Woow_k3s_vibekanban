@@ -1,0 +1,255 @@
+# Default values for the vibekanban chart.
+# Defaults reproduce the original k8s-manifests deployment 1:1
+# (namespace vibe-kanban, ClusterIP services, local-path + nfs-data PVCs,
+# node-pinned to woowtechcluster1-aorus-15p-xd).
+
+namespace:
+  # Create the target namespace as part of the release.
+  # Set to false when the namespace is managed elsewhere.
+  create: true
+  name: vibe-kanban
+
+# Every workload in the chart is pinned to a specific K3s node in the
+# original manifests. Set to "" (empty string) to run wherever the scheduler
+# chooses.
+nodeName: woowtechcluster1-aorus-15p-xd
+
+# ----------------------------------------------------------------------------
+# Secrets (values.yaml carries the same "<GENERATE_ME>" placeholders as the
+# original 01-secrets.yaml.example — override with --set for real deployments)
+# ----------------------------------------------------------------------------
+secrets:
+  # openssl rand -base64 48 (must decode to >= 32 bytes)
+  vibekanbanRemoteJwtSecret: "<GENERATE_ME>"
+  # openssl rand -base64 24
+  electricRolePassword: "<GENERATE_ME>"
+  # openssl rand -base64 24
+  postgresPassword: "<GENERATE_ME>"
+  selfHostLocalAuthEmail: "admin@example.com"
+  selfHostLocalAuthPassword: "<YOUR_PASSWORD>"
+  # Pre-constructed URLs (K8s $(VAR) expansion doesn't work with valueFrom).
+  # URL-encode any +, /, = characters in passwords.
+  serverDatabaseUrl: "postgres://remote:<URL_ENCODED_POSTGRES_PASSWORD>@vk-db-svc:5432/remote"
+  electricDatabaseUrl: "postgresql://electric_sync:<URL_ENCODED_ELECTRIC_ROLE_PASSWORD>@vk-db-svc:5432/remote?sslmode=disable"
+  # Optional — used by OpenCode inside the host container.
+  minimaxApiKey: "<YOUR_MINIMAX_API_KEY>"
+  # Cloudflare Tunnel token (only used when cloudflared.enabled=true).
+  cloudflareTunnelToken: ""
+
+# ----------------------------------------------------------------------------
+# Cluster-external URLs (routed via the Cloudflare Tunnel)
+# ----------------------------------------------------------------------------
+config:
+  publicBaseUrl: "https://woowtechkxs-vibekanban.woowtech.io"
+  relayPublicUrl: "https://woowtechkxs-vibekanban-relay.woowtech.io"
+
+# ----------------------------------------------------------------------------
+# Component: PostgreSQL 16 (single-writer, Recreate strategy)
+# ----------------------------------------------------------------------------
+postgres:
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    # "16-alpine" is a pinned tag → IfNotPresent matches the original manifests.
+    pullPolicy: IfNotPresent
+  persistence:
+    storageClassName: local-path
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  service:
+    type: ClusterIP
+    port: 5432
+
+# ----------------------------------------------------------------------------
+# Component: Vibe Kanban Remote Server (web UI + REST API)
+# ----------------------------------------------------------------------------
+remote:
+  image:
+    repository: localhost/vk-remote
+    tag: "v0.1.43"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  service:
+    type: ClusterIP
+    port: 8081
+
+# ----------------------------------------------------------------------------
+# Component: ElectricSQL (real-time sync engine)
+# ----------------------------------------------------------------------------
+electric:
+  image:
+    repository: electricsql/electric
+    tag: "1.4.13"
+    pullPolicy: IfNotPresent
+  persistence:
+    storageClassName: local-path
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  service:
+    type: ClusterIP
+    port: 3000
+
+# ----------------------------------------------------------------------------
+# Component: Vibe Kanban Relay Server (WebSocket relay for host)
+# ----------------------------------------------------------------------------
+relay:
+  image:
+    repository: localhost/vk-relay
+    tag: "v0.1.43"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  service:
+    type: ClusterIP
+    port: 8082
+
+# ----------------------------------------------------------------------------
+# Component: vk-host (three containers in one pod)
+#   - host        : Vibe Kanban Host binary + 50 CLI tools
+#   - openchamber : OpenCode Web GUI sidecar
+#   - mcp-service : 33-tool MCP server + admin UI
+# ----------------------------------------------------------------------------
+host:
+  image:
+    repository: localhost/vk-host
+    tag: "v0.1.43"
+    pullPolicy: IfNotPresent
+  workspace:
+    persistence:
+      storageClassName: nfs-data
+      size: 20Gi
+  # OpenCode provider config is bundled at files/opencode.json (verbatim from
+  # the original ConfigMap). Override by editing that file before install.
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+  initContainer:
+    image: ubuntu:24.04
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "4"
+        memory: 4Gi
+  service:
+    type: ClusterIP
+    port: 3000
+    mcpAdminPort: 8080
+    mcpSsePort: 8000
+    openchamberPort: 1920      # external port for the openchamber sidecar
+    openchamberTargetPort: 3080
+
+  openchamber:
+    enabled: true
+    image:
+      repository: localhost/openchamber
+      tag: latest
+      # Original manifest explicitly sets IfNotPresent (local image built
+      # on-node, not pullable). Keep the source value.
+      pullPolicy: IfNotPresent
+    uiPassword: "lemon0116"
+    opencodeServerPassword: "vk-oc-shared-secret-2026"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+  mcp:
+    enabled: true
+    image:
+      repository: localhost/vk-mcp
+      tag: "v1.0"
+      pullPolicy: IfNotPresent
+    # Token used by the MCP HTTP endpoint (matches the original hardcoded value).
+    authToken: "6325ad639d4722df2e2eddb2f53e5fcd53d243fa0675ad103ca255a354f26dea"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+
+# ----------------------------------------------------------------------------
+# Component: vk-terminal (ttyd browser-based shell)
+# ----------------------------------------------------------------------------
+terminal:
+  enabled: true
+  image:
+    repository: ubuntu
+    tag: "24.04"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  service:
+    type: ClusterIP
+    port: 7681
+
+# ----------------------------------------------------------------------------
+# Component: vk-cloudflared (dedicated Cloudflare Tunnel)
+# Set enabled=false if you route with your own ingress / tunnel.
+# ----------------------------------------------------------------------------
+cloudflared:
+  enabled: true
+  image:
+    repository: cloudflare/cloudflared
+    tag: latest
+    # ":latest" mirrors the source manifest — Kubernetes defaults it to Always
+    # internally; we spell it out explicitly here.
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ----------------------------------------------------------------------------
+# Component: NetworkPolicies (DB isolation + per-service ingress)
+# ----------------------------------------------------------------------------
+networkPolicies:
+  enabled: true
+
+# ----------------------------------------------------------------------------
+# Vibe Kanban Host env (baked into the pod spec)
+# ----------------------------------------------------------------------------
+hostEnv:
+  vkSharedApiBase: "https://woowtechkxs-vibekanban.woowtech.io"
+  vkSharedRelayApiBase: "https://woowtechkxs-vibekanban-relay.woowtech.io"

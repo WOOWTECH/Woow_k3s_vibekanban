@@ -1,16 +1,18 @@
+{{- if .Values.terminal.enabled }}
 # Web terminal (ttyd) for remote access to vk-host container
 # Provides browser-based TUI to run claude, opencode, etc.
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: vk-terminal-sa
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: vk-terminal-role
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -23,11 +25,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: vk-terminal-rb
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
 subjects:
   - kind: ServiceAccount
     name: vk-terminal-sa
-    namespace: vibe-kanban
+    namespace: {{ .Values.namespace.name }}
 roleRef:
   kind: Role
   name: vk-terminal-role
@@ -37,12 +39,12 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: vk-terminal-scripts
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
 data:
   connect.sh: |
     #!/bin/sh
     # ttyd wrapper: kubectl exec into the vk-host container
-    NAMESPACE="vibe-kanban"
+    NAMESPACE={{ .Values.namespace.name | quote }}
     LABEL="app=vk-host"
     CONTAINER="host"
 
@@ -79,7 +81,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vk-terminal
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
   labels:
     app: vk-terminal
     app.kubernetes.io/component: terminal
@@ -98,7 +100,8 @@ spec:
       serviceAccountName: vk-terminal-sa
       containers:
         - name: ttyd
-          image: ubuntu:24.04
+          image: "{{ .Values.terminal.image.repository }}:{{ .Values.terminal.image.tag }}"
+          imagePullPolicy: {{ .Values.terminal.image.pullPolicy }}
           command: ["bash", "/scripts/startup.sh"]
           ports:
             - containerPort: 7681
@@ -113,12 +116,7 @@ spec:
             - name: scripts
               mountPath: /scripts
           resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 200m
-              memory: 256Mi
+            {{- toYaml .Values.terminal.resources | nindent 12 }}
       volumes:
         - name: scripts
           configMap:
@@ -129,7 +127,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: vk-terminal-svc
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
   labels:
     app: vk-terminal
 spec:
@@ -138,6 +136,10 @@ spec:
   ports:
     - name: ttyd
       protocol: TCP
-      port: 7681
+      port: {{ .Values.terminal.service.port }}
       targetPort: 7681
-  type: ClusterIP
+      {{- if eq .Values.terminal.service.type "NodePort" }}
+      nodePort: {{ .Values.terminal.service.nodePort }}
+      {{- end }}
+  type: {{ .Values.terminal.service.type }}
+{{- end }}

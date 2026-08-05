@@ -1,8 +1,9 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vk-db
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
   labels:
     app: vk-db
     app.kubernetes.io/component: database
@@ -18,11 +19,11 @@ spec:
       labels:
         app: vk-db
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: woowtechcluster1-aorus-15p-xd
+      {{- include "vibekanban.nodeSelector" . | nindent 6 }}
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
           args: ["-c", "wal_level=logical"]
           ports:
             - containerPort: 5432
@@ -43,12 +44,7 @@ spec:
             - name: db-data
               mountPath: /var/lib/postgresql/data
           resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: "2"
-              memory: 2Gi
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
           livenessProbe:
             exec:
               command: ["pg_isready", "-U", "remote", "-d", "remote"]
@@ -63,20 +59,3 @@ spec:
         - name: db-data
           persistentVolumeClaim:
             claimName: vk-db-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: vk-db-svc
-  namespace: vibe-kanban
-  labels:
-    app: vk-db
-spec:
-  selector:
-    app: vk-db
-  ports:
-    - name: postgres
-      protocol: TCP
-      port: 5432
-      targetPort: 5432
-  type: ClusterIP

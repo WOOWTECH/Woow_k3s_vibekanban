@@ -1,0 +1,189 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vk-host
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app: vk-host
+    app.kubernetes.io/component: host
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: vk-host
+  template:
+    metadata:
+      labels:
+        app: vk-host
+    spec:
+      serviceAccountName: vk-host-sa
+      {{- include "vibekanban.nodeSelector" . | nindent 6 }}
+      initContainers:
+        - name: install-tools
+          image: {{ .Values.host.initContainer.image }}
+          command: ["bash", "/scripts/install-tools.sh"]
+          volumeMounts:
+            - name: workspace
+              mountPath: /var/tmp/vibe-kanban
+            - name: install-script
+              mountPath: /scripts
+          resources:
+            {{- toYaml .Values.host.initContainer.resources | nindent 12 }}
+        - name: wait-for-relay
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for relay server..."
+              until wget --spider -q http://vk-relay-svc:8082/health 2>/dev/null; do
+                echo "  relay not ready, retrying in 3s..."
+                sleep 3
+              done
+              echo "Relay is ready!"
+      containers:
+        - name: host
+          image: "{{ .Values.host.image.repository }}:{{ .Values.host.image.tag }}"
+          imagePullPolicy: {{ .Values.host.image.pullPolicy }}
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: RUST_LOG
+              value: "info"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "3000"
+            - name: VK_SHARED_API_BASE
+              value: {{ .Values.hostEnv.vkSharedApiBase | quote }}
+            - name: VK_SHARED_RELAY_API_BASE
+              value: {{ .Values.hostEnv.vkSharedRelayApiBase | quote }}
+            - name: PATH
+              value: "/var/tmp/vibe-kanban/.tools/bin:/var/tmp/vibe-kanban/.bin:/home/appuser/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            - name: MINIMAX_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vk-secrets
+                  key: MINIMAX_API_KEY
+            - name: PLAYWRIGHT_BROWSERS_PATH
+              value: "/var/tmp/vibe-kanban/.tools/pw-browsers"
+            - name: LD_LIBRARY_PATH
+              value: "/var/tmp/vibe-kanban/.tools/lib"
+            - name: DOTNET_ROOT
+              value: "/var/tmp/vibe-kanban/.tools/dotnet"
+            - name: DOTNET_SYSTEM_GLOBALIZATION_INVARIANT
+              value: "true"
+            - name: VIRTUAL_ENV
+              value: "/var/tmp/vibe-kanban/.tools/venv"
+          volumeMounts:
+            - name: workspace
+              mountPath: /var/tmp/vibe-kanban
+            - name: workspace
+              mountPath: /home/appuser/.config/opencode
+              subPath: .openchamber-config/opencode
+            - name: workspace
+              mountPath: /home/appuser/repos
+              subPath: .host-repos
+            - name: workspace
+              mountPath: /home/appuser/.local
+              subPath: .host-local
+          resources:
+            {{- toYaml .Values.host.resources | nindent 12 }}
+        {{- if .Values.host.openchamber.enabled }}
+        # ── OpenChamber sidecar (OpenCode Web GUI + Agent Interface) ──
+        - name: openchamber
+          image: "{{ .Values.host.openchamber.image.repository }}:{{ .Values.host.openchamber.image.tag }}"
+          imagePullPolicy: {{ .Values.host.openchamber.image.pullPolicy }}
+          command:
+            - bash
+            - -c
+            - |
+              # Workaround: OpenChamber's SPA catch-all uses res.sendFile() with
+              # an absolute path. The send module (used by Express 5) applies
+              # dotfile detection to every path component. Because the yarn
+              # global install lives under /usr/local/share/.config/..., the
+              # ".config" segment triggers dotfiles="ignore" -> 404 for ALL
+              # SPA routes (including /mcp/oauth/callback used by MCP OAuth).
+              # Symlinking the dist dir to a dotfile-free path fixes this.
+              DIST_SRC="/usr/local/share/.config/yarn/global/node_modules/@openchamber/web/dist"
+              if [ -d "$DIST_SRC" ]; then
+                ln -sfn "$DIST_SRC" /tmp/openchamber-dist
+                export OPENCHAMBER_DIST_DIR=/tmp/openchamber-dist
+              fi
+
+              # Set a known password BEFORE openchamber starts so both the
+              # OpenCode server and OpenChamber proxy use the same password.
+              export OPENCODE_SERVER_PASSWORD={{ .Values.host.openchamber.opencodeServerPassword | quote }}
+              openchamber serve --host 0.0.0.0 --port 3080 --ui-password "$OPENCHAMBER_UI_PASSWORD"
+              sleep 2
+              # Keep container alive by tailing logs
+              LOG_DIR="$HOME/.config/openchamber/logs"
+              mkdir -p "$LOG_DIR"
+              touch "$LOG_DIR/server.log"
+              exec tail -f "$LOG_DIR/server.log" /dev/null
+          ports:
+            - containerPort: 3080
+              name: openchamber
+          env:
+            - name: OPENCHAMBER_UI_PASSWORD
+              value: {{ .Values.host.openchamber.uiPassword | quote }}
+            - name: OPENCHAMBER_HOST
+              value: "0.0.0.0"
+            - name: MINIMAX_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vk-secrets
+                  key: MINIMAX_API_KEY
+          volumeMounts:
+            - name: workspace
+              mountPath: /home/openchamber/workspaces
+            - name: workspace
+              mountPath: /home/openchamber/.config/opencode
+              subPath: .openchamber-config/opencode
+            - name: workspace
+              mountPath: /home/openchamber/.config/openchamber
+              subPath: .openchamber-config/openchamber
+            - name: workspace
+              mountPath: /home/openchamber/.local/share/opencode
+              subPath: .openchamber-config/opencode-share
+            - name: workspace
+              mountPath: /home/openchamber/.local/state/opencode
+              subPath: .openchamber-config/opencode-state
+          resources:
+            {{- toYaml .Values.host.openchamber.resources | nindent 12 }}
+        {{- end }}
+        {{- if .Values.host.mcp.enabled }}
+        # ── MCP Service sidecar (件1+件2+件3) ──
+        - name: mcp-service
+          image: "{{ .Values.host.mcp.image.repository }}:{{ .Values.host.mcp.image.tag }}"
+          imagePullPolicy: {{ .Values.host.mcp.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: mcp-admin
+            - containerPort: 8000
+              name: mcp-sse
+          env:
+            - name: VIBE_BACKEND_URL
+              value: "http://localhost:3000"
+            - name: MCP_AUTH_TOKEN
+              value: {{ .Values.host.mcp.authToken | quote }}
+            - name: MCP_SERVER_PORT
+              value: "8000"
+          resources:
+            {{- toYaml .Values.host.mcp.resources | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: vk-host-workspace-pvc
+        - name: opencode-config
+          configMap:
+            name: vk-host-opencode-config
+        - name: install-script
+          configMap:
+            name: vk-host-install-script
+            defaultMode: 0755

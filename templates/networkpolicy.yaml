@@ -1,9 +1,11 @@
+{{- if .Values.networkPolicies.enabled }}
+---
 # PostgreSQL: only remote, relay, and electric can connect
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: vk-db-policy
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
 spec:
   podSelector:
     matchLabels:
@@ -29,7 +31,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: vk-remote-policy
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
 spec:
   podSelector:
     matchLabels:
@@ -47,7 +49,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: vk-relay-policy
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
 spec:
   podSelector:
     matchLabels:
@@ -65,7 +67,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: vk-electric-policy
-  namespace: vibe-kanban
+  namespace: {{ .Values.namespace.name }}
 spec:
   podSelector:
     matchLabels:
@@ -79,3 +81,4 @@ spec:
               app: vk-remote
       ports:
         - port: 3000
+{{- end }}

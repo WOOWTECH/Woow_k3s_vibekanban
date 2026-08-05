@@ -1,0 +1,20 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vk-relay-svc
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app: vk-relay
+spec:
+  selector:
+    app: vk-relay
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.relay.service.port }}
+      targetPort: 8082
+      {{- if eq .Values.relay.service.type "NodePort" }}
+      nodePort: {{ .Values.relay.service.nodePort }}
+      {{- end }}
+  type: {{ .Values.relay.service.type }}

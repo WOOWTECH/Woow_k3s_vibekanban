@@ -1,0 +1,27 @@
+apiVersion: v2
+name: vibekanban
+description: >-
+  Self-hosted Vibe Kanban on K3s / Kubernetes — Remote server + Relay +
+  ElectricSQL + PostgreSQL 16, an all-in-one Host pod (Vibe Kanban Host +
+  OpenChamber + MCP sidecar), a browser Web Terminal (ttyd), and a
+  dedicated Cloudflare Tunnel.
+type: application
+version: 1.0.0
+appVersion: "v0.1.43"
+kubeVersion: ">=1.24.0-0"
+keywords:
+  - vibe-kanban
+  - kanban
+  - electricsql
+  - postgres
+  - claude-code
+  - opencode
+  - mcp
+  - openchamber
+home: https://github.com/WOOWTECH/Woow_k3s_vibekanban
+sources:
+  - https://github.com/WOOWTECH/Woow_k3s_vibekanban
+  - https://github.com/BloopAI/vibe-kanban
+maintainers:
+  - name: WoowTech
+    url: https://github.com/WOOWTECH
