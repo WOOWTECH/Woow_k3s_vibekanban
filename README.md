@@ -1,3 +1,7 @@
+> [!WARNING]
+> **已停用 / Deprecated（2026-09-12）**：這個 repo 已不再維護，也不再部署在 WOOWTECH 的叢集上，僅保留作為歷史參考。
+> This repository is no longer maintained or deployed on WOOWTECH clusters and is kept for reference only.
+
 # Woow_k3s_vibekanban
 
 **Helm chart** for deploying [Vibe Kanban](https://github.com/BloopAI/vibe-kanban) on K3s / Kubernetes.
